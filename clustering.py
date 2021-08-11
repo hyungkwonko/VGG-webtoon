@@ -7,18 +7,20 @@ from torchvision import transforms
 from PIL import Image
 from glob import glob
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 import pandas as pd
 
 
 input_size = 224
 use_pretrained = False
 num_classes = 425  # number of webtoons
-model_path = 'model/vgg_webtoon_64.pth'
-number_of_clusters = 5
+# model_path = 'model/vgg16_bn_webtoon_128_0.001_1e-07.pth'
+# model_path = 'model/vgg16_bn_webtoon_128_0.0001_1e-05_0.9.pth'
+model_path = 'model/vgg16_bn_webtoon_64_0.0001_1e-05_0.98.pth'
+number_of_clusters = 425
 save_imgs = True
 model_name = 'vgg16_bn' # vgg16
-
+clustering_method = 'kmeans'
 
 data_transforms = transforms.Compose([
         transforms.Resize(input_size),
@@ -39,7 +41,7 @@ if __name__ == '__main__':
     if model_name == 'vgg16_bn':
         model = models.vgg16_bn(pretrained=use_pretrained)
     else:
-        model = models.vgg16(pretrained=True, progress=True)
+        model = models.vgg16(pretrained=use_pretrained)
     model.classifier[6] = nn.Linear(4096, num_classes)
 
     print('load models...')
@@ -48,8 +50,8 @@ if __name__ == '__main__':
     model = model.to(device)
     model.eval()
 
-    new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
-    model.classifier = new_classifier
+    # new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+    # model.classifier = new_classifier
 
     files = glob('data/webtoon_test/*.jpg')
 
@@ -69,8 +71,13 @@ if __name__ == '__main__':
 
     print(f"features.shape: {features.shape}")
 
-    kmeans = KMeans(n_clusters=number_of_clusters, random_state=0).fit(features)
-    labels = kmeans.labels_
+    if clustering_method == 'dbscan':
+        clustering = DBSCAN(eps=100, min_samples=10, n_jobs=-1).fit(features)
+    else:
+        clustering = KMeans(n_clusters=number_of_clusters, random_state=0).fit(features)
+    labels = clustering.labels_
+    print(f"{clustering_method} clustering finished...")
+    print(f"unique: {np.unique(labels, return_counts=True)}...")
 
     save_file = pd.DataFrame()
     save_file['seed'] = np.arange(num_images)
@@ -80,7 +87,7 @@ if __name__ == '__main__':
     print("csv file saved successfully...")
 
     if save_imgs:
-        for i in range(number_of_clusters):
+        for i in set(labels):
             os.makedirs(f'result/{i}', exist_ok=True)
 
         for label, file in zip(labels, files):
